@@ -39,12 +39,9 @@ class Detect(nn.Module):
         x, emb=x[:3], x[3:]
         self.training |= self.export
         for i in range(self.nl):
-            print(f"input x: {x[i].shape}")
             x[i] = self.m[i](x[i])  # conv
-            print(f"output x: {x[i].shape}")
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-            print(f"reshape x: {x[i].shape}")
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
@@ -57,7 +54,7 @@ class Detect(nn.Module):
                     y = torch.cat([y,p_emb],dim=-1)
                 z.append(y.view(bs, -1, self.no))
 
-        return x if self.training else (torch.cat(z, 1), x)
+        return x if self.training else torch.cat(z, 1)
 
     @staticmethod
     def _make_grid(nx=20, ny=20):
@@ -136,11 +133,11 @@ class Model(nn.Module):
                     _ = m(x)
                 dt.append((time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
-            if type(m)==Detect:
-                print(f"input to detect layer {[i.shape for i in x]}")
+#             if type(m)==Detect:
+#                 print(f"input to detect layer {[i.shape for i in x]}")
             x = m(x)  # run
-            if type(m)==Detect:
-                print(f"output from detect layer {[i.shape for i in x]}")
+#             if type(m)==Detect:
+#                 print(f"output from detect layer {[i.shape for i in x]}")
             y.append(x if m.i in self.save else None)  # save output
 
         if profile:

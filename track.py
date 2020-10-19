@@ -121,12 +121,11 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
     data_type = 'mot'
 
     # Read config
-    if opt.yolo_version=="v3":
+    if opt.joint_model=="yolov3":
         cfg_dict = parse_model_cfg(opt.cfg)
         opt.img_size = [int(cfg_dict[0]['width']), int(cfg_dict[0]['height'])]
     else:
         opt.img_size = [640,640]
-
     # run tracking
     accs = []
     n_frame = 0

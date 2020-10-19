@@ -168,10 +168,9 @@ class JDETracker(object):
         #     self.model = Model(opt.cfg)
         # else:
         #     self.model = Darknet(opt.cfg, nID=14455)
-        self.model = get_joint_model(opt.joint_model)
+        self.jde = get_joint_model(opt.joint_model)(opt)
         # load_darknet_weights(self.model, opt.weights)
-        self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
-        self.model.cuda().eval()
+        
 
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
@@ -214,8 +213,8 @@ class JDETracker(object):
         t1 = time.time()
         ''' Step 1: Network forward, get detections & embeddings'''
         with torch.no_grad():
-            pred = self.model(im_blob)
-        dets,embs = self.model.post_process(pred)
+            pred = self.jde.process(im_blob)
+        dets,embs = self.jde.postprocess(pred, img0)
         # pred is tensor of all the proposals (default number of proposals: 54264). Proposals have information associated with the bounding box and embeddings
 
         detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f.numpy(), 30) for

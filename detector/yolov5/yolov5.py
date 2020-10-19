@@ -1,17 +1,20 @@
 from detector.yolov5.model import Model
 from utils.utils import non_max_suppression, scale_coords
-
+import torch
 
 class YOLOv5:
-    def __init__(self, cfg,opt):
+    def __init__(self, opt):
         self.opt = opt
-        self.model = Model(cfg)
+        self.model = Model(opt.cfg)
+        self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
+        self.model.cuda().eval()
 
     def process(self, img):
         pred = self.model(img)
         return pred
 
     def postprocess(self, pred, img):
+#         import pdb;pdb.set_trace()
         pred = pred[pred[:, :, 4] > self.opt.conf_thres]
         # pred now has lesser number of proposals. Proposals rejected on basis of object confidence score
         if len(pred) > 0:

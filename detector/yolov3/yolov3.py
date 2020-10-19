@@ -1,10 +1,12 @@
 from .model import Darknet, non_max_suppression, scale_coords
-
+import torch
 
 class YOLOv3:
-    def __init__(self, cfg,opt):
+    def __init__(self,opt):
         self.opt = opt
-        self.model = Darknet(cfg)
+        self.model = Darknet(opt.cfg)
+        self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
+        self.model.cuda().eval()
 
     def process(self, img):
         pred = self.model(img)

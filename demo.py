@@ -40,7 +40,7 @@ def track(opt):
     result_root = opt.output_root if opt.output_root!='' else '.'
     mkdir_if_missing(result_root)
 
-    if opt.yolo_version=="v3":
+    if opt.joint_model=="yolov3":
         cfg_dict = parse_model_cfg(opt.cfg)
         opt.img_size = [int(cfg_dict[0]['width']), int(cfg_dict[0]['height'])]
     else:
