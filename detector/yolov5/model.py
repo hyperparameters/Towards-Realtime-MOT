@@ -20,7 +20,7 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     export = False  # onnx export
 
-    def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
+    def __init__(self, nc=80, anchors=(), ch=(),emb_size=512):  # detection layer
         super(Detect, self).__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -31,6 +31,7 @@ class Detect(nn.Module):
         self.register_buffer('anchors', a)  # shape(nl,na,2)
         self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.emb_size = emb_size
 
     def forward(self, x):
 
@@ -49,10 +50,18 @@ class Detect(nn.Module):
                 y = x[i].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                out_channel = self.no
                 if len(emb)>0:
-                    p_emb = F.normalize(emb[i].permute(0,2,3,1).unsqueeze(1).repeat(1, self.nA, 1, 1, 1).contiguous(), dim=-1)
+                    p_emb = F.normalize(emb[i].permute(0,2,3,1).unsqueeze(1).repeat(1, self.na, 1, 1, 1).contiguous(), dim=-1)
+                    if p_emb.shape[-1]!=self.emb_size:
+                        factor = self.emb_size/p_emb.shape[-1]
+                        p_emb = F.interpolate(p_emb,scale_factor=(1,1,factor))
                     y = torch.cat([y,p_emb],dim=-1)
-                z.append(y.view(bs, -1, self.no))
+                    out_channel = self.no + self.emb_size
+                else:
+                    raise Exception("mbeddings not found")
+                y = y.view(bs, -1, out_channel)
+                z.append(y)
 
         return x if self.training else torch.cat(z, 1)
 

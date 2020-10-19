@@ -214,17 +214,19 @@ if __name__ == '__main__':
         data_root = '/home/wangzd/datasets/MOT/MOT16/images/test'
 
     if opt.test_store:
+#         seqs_str = '''soch_cam5
+#                       soch_cam3
+#                       nike
+#                       pe_cam1
+#                       pe_cam6
+#                       pe2_cam1
+#                       pe2_cam2
+#                       hm_cam1
+#                       hm_cam2
+#                       hm_cam3
+#                       '''
         seqs_str = '''soch_cam5
-                      soch_cam3
-                      nike
-                      pe_cam1
-                      pe_cam6
-                      pe2_cam1
-                      pe2_cam2
-                      hm_cam1
-                      hm_cam2
-                      hm_cam3
-                      '''
+                      '''          
         data_root = os.path.join(opt.data_dir, 'store/test')
 
     seqs = [seq.strip() for seq in seqs_str.split()]

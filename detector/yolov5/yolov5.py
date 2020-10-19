@@ -7,6 +7,7 @@ class YOLOv5:
         self.opt = opt
         self.model = Model(opt.cfg)
         self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
+        print(f"loaded weights from {opt.weights}")
         self.model.cuda().eval()
 
     def process(self, img):
