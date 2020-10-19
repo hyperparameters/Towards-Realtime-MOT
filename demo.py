@@ -45,7 +45,7 @@ def track(opt):
         opt.img_size = [int(cfg_dict[0]['width']), int(cfg_dict[0]['height'])]
     else:
         opt.img_size = [640,640]
-            
+
     # run tracking
     timer = Timer()
     accs = []
@@ -84,7 +84,9 @@ if __name__ == '__main__':
     parser.add_argument('--output-format', type=str, default='video', choices=['video', 'text'], help='Expected output format. Video or text.')
     parser.add_argument('--output-root', type=str, default='results', help='expected output root path')
     parser.add_argument('--yolo-version', type=str, default='v5', help='v5/ v3')
-    
+
+    parser.add_argument('--joint-model', type=str, default="yolov5", help="select the joint model yolov3/yolov5")
+
     opt = parser.parse_args()
     print(opt, end='\n\n')
 

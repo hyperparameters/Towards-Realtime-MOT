@@ -188,6 +188,8 @@ if __name__ == '__main__':
     parser.add_argument('--test-store', action='store_true', help='tracking buffer')
     parser.add_argument('--save-images', action='store_true', help='save tracking results (image)')
     parser.add_argument('--save-videos', action='store_true', help='save tracking results (video)')
+    parser.add_argument('--joint-model',type=str, default="yolov5", help= "select the joint model yolov3/yolov5")
+
     parser.add_argument('--yolo-version', type=str, default='v5', help='v5/ v3')
     opt = parser.parse_args()
     print(opt, end='\n\n')
@@ -211,7 +213,7 @@ if __name__ == '__main__':
                      MOT16-12
                      MOT16-14'''
         data_root = '/home/wangzd/datasets/MOT/MOT16/images/test'
-    
+
     if opt.test_store:
         seqs_str = '''soch_cam5
                       soch_cam3
@@ -225,9 +227,9 @@ if __name__ == '__main__':
                       hm_cam3
                       '''
         data_root = os.path.join(opt.data_dir, 'store/test')
-        
+
     seqs = [seq.strip() for seq in seqs_str.split()]
-    
+
     main(opt,
          data_root=data_root,
          seqs=seqs,
