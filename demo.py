@@ -73,8 +73,8 @@ def track(opt):
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='demo.py')
-    parser.add_argument('--cfg', type=str, default='cfg/yolov3_1088x608.cfg', help='cfg file path')
-    parser.add_argument('--weights', type=str, default='weights/latest.pt', help='path to weights file')
+    parser.add_argument('--cfg', type=str, default='cfg/yolov5s_w_emb.yaml', help='cfg file path')
+    parser.add_argument('--weights', type=str, default='weights/yolov5s_w_emb.pt', help='path to weights file')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='iou threshold required to qualify as detected')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='object confidence threshold')
     parser.add_argument('--nms-thres', type=float, default=0.4, help='iou threshold for non-maximum suppression')
@@ -88,6 +88,8 @@ if __name__ == '__main__':
     parser.add_argument('--joint-model', type=str, default="yolov5", help="select the joint model yolov3/yolov5")
 
     opt = parser.parse_args()
+    opt.input_video = "/home/tushar/hdd/fynd/fynd_trak/data/store_data/soch/test.mp4"
+    opt.device="cpu"
     print(opt, end='\n\n')
 
     track(opt)

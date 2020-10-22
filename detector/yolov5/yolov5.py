@@ -7,7 +7,7 @@ class YOLOv5:
         self.opt = opt
         self.model = Model(opt.cfg)
         self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
-        self.model.cuda().eval()
+        self.model.to(opt.device).eval()
 
     def process(self, img):
         pred = self.model(img)
