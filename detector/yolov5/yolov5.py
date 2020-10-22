@@ -2,6 +2,7 @@ from detector.yolov5.model import Model
 from utils.utils import non_max_suppression, scale_coords
 import torch
 
+
 class YOLOv5:
     def __init__(self, opt):
         self.opt = opt
@@ -15,7 +16,6 @@ class YOLOv5:
         return pred
 
     def postprocess(self, pred, img):
-#         import pdb;pdb.set_trace()
         pred = pred[pred[:, :, 4] > self.opt.conf_thres]
         # pred now has lesser number of proposals. Proposals rejected on basis of object confidence score
         if len(pred) > 0:
@@ -25,6 +25,6 @@ class YOLOv5:
             scale_coords(self.opt.img_size, dets[:, :4], img.shape).round()
             '''Detections is list of (x1, y1, x2, y2, object_conf, class_score, class_pred)'''
             # class_pred is the embeddings.
-            return dets[:5], dets[5:]
+            return dets[:, :5], dets[:, 6:]
         else:
             return [],[]

@@ -84,12 +84,15 @@ if __name__ == '__main__':
     parser.add_argument('--output-format', type=str, default='video', choices=['video', 'text'], help='Expected output format. Video or text.')
     parser.add_argument('--output-root', type=str, default='results', help='expected output root path')
     parser.add_argument('--yolo-version', type=str, default='v5', help='v5/ v3')
-
+    parser.add_argument('--gpu', type=str, default='0', help='0,1,2, -1 for cpu')
     parser.add_argument('--joint-model', type=str, default="yolov5", help="select the joint model yolov3/yolov5")
 
     opt = parser.parse_args()
-    opt.input_video = "/home/tushar/hdd/fynd/fynd_trak/data/store_data/soch/test.mp4"
-    opt.device="cpu"
+    opt.gpu = list(map(int, opt.gpu.split(",")))
+    if opt.gpu[0]>0:
+        opt.device = "cuda"
+    else:
+        opt.device = "cpu"
     print(opt, end='\n\n')
 
     track(opt)

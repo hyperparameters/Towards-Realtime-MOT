@@ -22,6 +22,6 @@ class YOLOv3:
             scale_coords(self.opt.img_size, dets[:, :4], img.shape).round()
             '''Detections is list of (x1, y1, x2, y2, object_conf, class_score, class_pred)'''
             # class_pred is the embeddings.
-            return dets[:5], dets[5:]
+            return dets[:,5], dets[:,6:]
         else:
             return [],[]
