@@ -86,7 +86,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
 
         # run tracking
         timer.tic()
-        blob = torch.from_numpy(img).cuda().unsqueeze(0)
+        blob = torch.from_numpy(img).to(opt.device).unsqueeze(0)
         online_targets = tracker.update(blob, img0)
         online_tlwhs = []
         online_ids = []
@@ -188,9 +188,14 @@ if __name__ == '__main__':
     parser.add_argument('--save-images', action='store_true', help='save tracking results (image)')
     parser.add_argument('--save-videos', action='store_true', help='save tracking results (video)')
     parser.add_argument('--joint-model',type=str, default="yolov5", help= "select the joint model yolov3/yolov5")
-
+    parser.add_argument('--gpu', type=str, default='0', help='0,1,2, -1 for cpu')
     parser.add_argument('--yolo-version', type=str, default='v5', help='v5/ v3')
     opt = parser.parse_args()
+    opt.gpu = list(map(int, opt.gpu.split(",")))
+    if opt.gpu[0]>=0:
+        opt.device = "cuda"
+    else:
+        opt.device = "cpu"
     print(opt, end='\n\n')
  
     if opt.test_mot17:
@@ -213,24 +218,7 @@ if __name__ == '__main__':
                      MOT16-14'''
         data_root = '/home/wangzd/datasets/MOT/MOT16/images/test'
 
-    if opt.test_store:
-#         seqs_str = '''soch_cam5
-#                       soch_cam3
-#                       nike
-#                       pe_cam1
-#                       pe_cam6
-#                       pe2_cam1
-#                       pe2_cam2
-#                       hm_cam1
-#                       hm_cam2
-#                       hm_cam3
-#                       '''
-        seqs_str = '''soch_cam5
-                      '''          
-        data_root = os.path.join(opt.data_dir, 'store/test')
-
-    seqs = [seq.strip() for seq in seqs_str.split()]
-
+    
     main(opt,
          data_root=data_root,
          seqs=seqs,
