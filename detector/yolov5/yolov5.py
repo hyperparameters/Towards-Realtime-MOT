@@ -8,6 +8,7 @@ class YOLOv5:
         self.model = Model(opt.cfg)
         self.model.load_state_dict(torch.load(opt.weights, map_location='cpu')['model'], strict=False)
         self.model.to(opt.device).eval()
+        print(f"loaded weights from {opt.weights}")
 
     def process(self, img):
         pred = self.model(img)
