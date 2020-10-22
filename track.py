@@ -218,7 +218,7 @@ if __name__ == '__main__':
                      MOT16-14'''
         data_root = '/home/wangzd/datasets/MOT/MOT16/images/test'
 
-    
+    seqs = [seq.strip() for seq in seqs_str.split()]
     main(opt,
          data_root=data_root,
          seqs=seqs,
