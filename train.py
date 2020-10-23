@@ -4,6 +4,8 @@ from time import gmtime, strftime
 import test
 from detector.yolov3.model import *
 from shutil import copyfile
+
+from detector.yolov5.model import Model
 from utils.datasets import JointDataset, collate_fn
 from utils.utils import *
 from utils.log import logger
@@ -23,6 +25,7 @@ def train(
         accumulated_batches=1,
         freeze_backbone=False,
         opt=None,
+        pre_weights=None,
 ):
     # The function starts
 
@@ -50,7 +53,10 @@ def train(
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True,
                                              num_workers=8, pin_memory=True, drop_last=True, collate_fn=collate_fn)
     # Initialize model
-    model = Darknet(cfg, dataset.nID)
+    if opt.joint_model=="yolov5":
+        model = Model(cfg)
+    else:
+        model = Darknet(cfg, dataset.nID)
 
     cutoff = -1  # backbone reaches to cutoff layer
     start_epoch = 0
@@ -69,7 +75,9 @@ def train(
             optimizer.load_state_dict(checkpoint['optimizer'])
 
         del checkpoint  # current, saved
-
+    elif pre_weights:
+        checkpoint = torch.load(pre_weights, map_location='cpu')
+        model.load_state_dict(checkpoint['model'])
     else:
         # Initialize model with backbone (optional)
         if cfg.endswith('yolov3.cfg'):
@@ -77,7 +85,6 @@ def train(
             cutoff = 75
         elif cfg.endswith('yolov3-tiny.cfg'):
             load_darknet_weights(model, osp.join(weights_from, 'yolov3-tiny.conv.15'))
-            cutoff = 15
 
         model.cuda().train()
 
@@ -200,6 +207,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-2, help='init lr')
     parser.add_argument('--unfreeze-bn', action='store_true', help='unfreeze bn')
     parser.add_argument('--joint-model', type=str, default="yolov5", help="select the joint model yolov3/yolov5")
+    parser.add_argument('--pre-weights', type=str, default=None, help="model weights to initialize model")
     opt = parser.parse_args()
 
     init_seeds()
@@ -216,4 +224,5 @@ if __name__ == '__main__':
         batch_size=opt.batch_size,
         accumulated_batches=opt.accumulated_batches,
         opt=opt,
+        pre_weights=opt.pre_weights
     )

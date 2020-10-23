@@ -1,5 +1,7 @@
 import argparse
 import logging
+from collections import OrderedDict
+
 import math
 from copy import deepcopy
 from pathlib import Path
@@ -7,11 +9,14 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from utils.utils import build_targets_thres
 from .common import Conv, Bottleneck, SPP, DWConv, Focus, BottleneckCSP, Concat
 from .experimental import MixConv2d, CrossConv, C3
 from .utils.general import check_anchor_order, make_divisible, check_file, set_logging
 from .utils.torch_utils import (
     time_synchronized, fuse_conv_and_bn, model_info, scale_img, initialize_weights, select_device)
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +25,7 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     export = False  # onnx export
 
-    def __init__(self, nc=80, anchors=(), ch=(),emb_size=512):  # detection layer
+    def __init__(self, nc=80, anchors=(), ch=(), emb_size=512):  # detection layer
         super(Detect, self).__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -32,17 +37,30 @@ class Detect(nn.Module):
         self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.emb_size = emb_size
+        self.warn = 1
+        self.loss_names = ['loss', 'box', 'conf', 'id', 'nT']
 
-    def forward(self, x):
+    def forward(self, x, targets=None, classifier=None):
 
         # x = x.copy()  # for profiling
         z = []  # inference output
-        x, emb=x[:3], x[3:]
+        x, emb = x[:, 3], x[:, 3:]
         self.training |= self.export
+
+        self.losses = OrderedDict()
+        for ln in self.loss_names:
+            self.losses[ln] = 0
+        outputs = []
+
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+
+            p_emb = emb[i].permute(0, 2, 3, 1)
+            p_box = x[i][..., :4]
+            p_conf = x[i][..., 4:6].permute(0, 4, 1, 2, 3)  # Conf
+
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
@@ -51,19 +69,60 @@ class Detect(nn.Module):
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
                 out_channel = self.no
-                if len(emb)>0:
-                    p_emb = F.normalize(emb[i].permute(0,2,3,1).unsqueeze(1).repeat(1, self.na, 1, 1, 1).contiguous(), dim=-1)
-                    if p_emb.shape[-1]!=self.emb_size:
-                        factor = self.emb_size/p_emb.shape[-1]
-                        p_emb = F.interpolate(p_emb,scale_factor=(1,1,factor))
-                    y = torch.cat([y,p_emb],dim=-1)
-                    out_channel = self.no + self.emb_size
-                else:
-                    raise Exception("mbeddings not found")
+                p_emb = F.normalize(emb[i].unsqueeze(1).repeat(1, self.na, 1, 1, 1).contiguous(), dim=-1)
+                if p_emb.shape[-1] != self.emb_size:
+                    factor = self.emb_size / p_emb.shape[-1]
+                    p_emb = F.interpolate(p_emb, scale_factor=(1, 1, factor))
+                y = torch.cat([y, p_emb], dim=-1)
+                out_channel = self.no + self.emb_size
+
                 y = y.view(bs, -1, out_channel)
                 z.append(y)
+            else:
+                tconf, tbox, tids = build_targets_thres(targets, self.anchor_vec.cuda(), self.na, self.no, ny, nx)
+                tconf, tbox, tids = tconf.cuda(), tbox.cuda(), tids.cuda()
+                mask = tconf > 0
+                # Compute losses
+                nT = sum([len(x) for x in targets])  # number of targets
+                nM = mask.sum().float()  # number of anchors (assigned to targets)
+                nP = torch.ones_like(mask).sum().float()
+                if nM > 0:
+                    lbox = self.SmoothL1Loss(p_box[mask], tbox[mask])
+                else:
+                    FT = torch.cuda.FloatTensor if p_conf.is_cuda else torch.FloatTensor
+                    lbox, lconf = FT([0]), FT([0])
+                lconf = self.SoftmaxLoss(p_conf, tconf)
+                lid = torch.Tensor(1).fill_(0).squeeze().cuda()
+                emb_mask, _ = mask.max(1)
 
-        return x if self.training else torch.cat(z, 1)
+                # For convenience we use max(1) to decide the id, TODO: more reseanable strategy
+                tids, _ = tids.max(1)
+                tids = tids[emb_mask]
+                embedding = p_emb[emb_mask].contiguous()
+                embedding = self.emb_scale * F.normalize(embedding)
+                nI = emb_mask.sum().float()
+
+                # if test_emb:
+                #     if np.prod(embedding.shape) == 0 or np.prod(tids.shape) == 0:
+                #         return torch.zeros(0, self.emb_dim + 1).cuda()
+                #     emb_and_gt = torch.cat([embedding, tids.float()], dim=1)
+                #     return emb_and_gt
+
+                if len(embedding) > 1:
+                    logits = classifier(embedding).contiguous()
+                    lid = self.IDLoss(logits, tids.squeeze())
+
+                # Sum loss components
+                loss = torch.exp(-self.s_r) * lbox + torch.exp(-self.s_c) * lconf + torch.exp(-self.s_id) * lid + \
+                       (self.s_r + self.s_c + self.s_id)
+                loss *= 0.5
+                for name, loss in zip(self.loss_names, [loss.item(), lbox.item(), lconf.item(), lid.item(), nT]):
+                    self.losses[name] += loss
+                # loss, loss.item(), lbox.item(), lconf.item(), lid.item(), nT
+                self.losses['nT'] /= 3
+                outputs.append(loss)
+
+        return sum(outputs), torch.Tensor(list(self.losses.values())).cuda() if self.training else torch.cat(z, 1)
 
     @staticmethod
     def _make_grid(nx=20, ny=20):
@@ -105,7 +164,8 @@ class Model(nn.Module):
         self.info()
         print('')
 
-    def forward(self, x, augment=False, profile=False):
+    def forward(self, x, augment=False, profile=False, targets=None, classifier=None, targets_len=None):
+        self.is_training = (targets is not None) and (not self.test_emb)
         if augment:
             img_size = x.shape[-2:]  # height, width
             s = [1, 0.83, 0.67]  # scales
@@ -113,7 +173,7 @@ class Model(nn.Module):
             y = []  # outputs
             for si, fi in zip(s, f):
                 xi = scale_img(x.flip(fi) if fi else x, si)
-                yi = self.forward_once(xi)[0]  # forward
+                yi = self.forward_once(xi, targets=None, classifier=None, targets_len=None)[0]  # forward
                 # cv2.imwrite('img%g.jpg' % s, 255 * xi[0].numpy().transpose((1, 2, 0))[:, :, ::-1])  # save
                 yi[..., :4] /= si  # de-scale
                 if fi == 2:
@@ -123,9 +183,9 @@ class Model(nn.Module):
                 y.append(yi)
             return torch.cat(y, 1), None  # augmented inference, train
         else:
-            return self.forward_once(x, profile)  # single-scale inference, train
+            return self.forward_once(x, profile, targets=None, classifier=None, targets_len=None)  # single-scale inference, train
 
-    def forward_once(self, x, profile=False):
+    def forward_once(self, x, profile=False, targets=None, classifier=None, targets_len=None):
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
@@ -142,11 +202,13 @@ class Model(nn.Module):
                     _ = m(x)
                 dt.append((time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
-#             if type(m)==Detect:
-#                 print(f"input to detect layer {[i.shape for i in x]}")
-            x = m(x)  # run
-#             if type(m)==Detect:
-#                 print(f"output from detect layer {[i.shape for i in x]}")
+
+            if isinstance(m,Detect):
+                if targets:
+                    targets = [targets[i][:int(l)] for i, l in enumerate(targets_len)]
+                x = m(x, targets=targets, classifier=classifier)
+            else:
+                x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
 
         if profile:
