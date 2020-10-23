@@ -46,6 +46,7 @@ class Detect(nn.Module):
         z = []  # inference output
         x, emb = x[:, 3], x[:, 3:]
         self.training |= self.export
+        device = x[0].device
 
         self.losses = OrderedDict()
         for ln in self.loss_names:
@@ -66,7 +67,7 @@ class Detect(nn.Module):
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
 
                 y = x[i].sigmoid()
-                y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
+                y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
                 out_channel = self.no
                 p_emb = F.normalize(emb[i].unsqueeze(1).repeat(1, self.na, 1, 1, 1).contiguous(), dim=-1)
@@ -79,8 +80,8 @@ class Detect(nn.Module):
                 y = y.view(bs, -1, out_channel)
                 z.append(y)
             else:
-                tconf, tbox, tids = build_targets_thres(targets, self.anchor_vec.cuda(), self.na, self.no, ny, nx)
-                tconf, tbox, tids = tconf.cuda(), tbox.cuda(), tids.cuda()
+                tconf, tbox, tids = build_targets_thres(targets, self.anchor_vec.to(device), self.na, self.no, ny, nx)
+                tconf, tbox, tids = tconf.to(device)(), tbox.to(device)(), tids.to(device)()
                 mask = tconf > 0
                 # Compute losses
                 nT = sum([len(x) for x in targets])  # number of targets
@@ -92,7 +93,7 @@ class Detect(nn.Module):
                     FT = torch.cuda.FloatTensor if p_conf.is_cuda else torch.FloatTensor
                     lbox, lconf = FT([0]), FT([0])
                 lconf = self.SoftmaxLoss(p_conf, tconf)
-                lid = torch.Tensor(1).fill_(0).squeeze().cuda()
+                lid = torch.Tensor(1).fill_(0).squeeze().to(device)()
                 emb_mask, _ = mask.max(1)
 
                 # For convenience we use max(1) to decide the id, TODO: more reseanable strategy
@@ -104,7 +105,7 @@ class Detect(nn.Module):
 
                 # if test_emb:
                 #     if np.prod(embedding.shape) == 0 or np.prod(tids.shape) == 0:
-                #         return torch.zeros(0, self.emb_dim + 1).cuda()
+                #         return torch.zeros(0, self.emb_dim + 1).to(device)()
                 #     emb_and_gt = torch.cat([embedding, tids.float()], dim=1)
                 #     return emb_and_gt
 
@@ -122,7 +123,7 @@ class Detect(nn.Module):
                 self.losses['nT'] /= 3
                 outputs.append(loss)
 
-        return sum(outputs), torch.Tensor(list(self.losses.values())).cuda() if self.training else torch.cat(z, 1)
+        return sum(outputs), torch.Tensor(list(self.losses.values())).to(device)() if self.training else torch.cat(z, 1)
 
     @staticmethod
     def _make_grid(nx=20, ny=20):
